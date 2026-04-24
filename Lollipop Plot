@@ -1,0 +1,51 @@
+library(readr)
+library(dplyr)
+library(ggplot2)
+
+# Load DGE file
+dge <- read_tsv("~/Downloads/selected_genes_dge.tsv",
+                col_names = c("EnsemblID", "gene_name", "logFC", "logCPM",
+                              "PValue", "FDR", "F", "gene_biotype",
+                              "GroupA_AvgCPM", "GroupB_AvgCPM",
+                              "GroupA_stdv", "GroupB_stdv",
+                              "log10FDR", "alias", "mygene_name", "summary"),
+                skip = 1, show_col_types = FALSE)
+
+# Define canonical Wnt/beta-catenin target genes to plot
+wnt_targets <- c("AXIN2", "MYC", "CCND1", "LEF1", "TCF7", "TCF7L2",
+                  "SP5", "TNFRSF19", "LGR5", "ASCL2", "NKD1", "RNF43",
+                  "CTNNB1", "DKK1", "NOTUM", "APCDD1")
+
+# Filter DGE file to only Wnt target genes and sort by logFC
+wnt_data <- dge %>%
+  filter(gene_name %in% wnt_targets) %>%
+  select(gene_name, logFC, logCPM, FDR) %>%
+  arrange(logFC)
+
+# Build plot — each gene is a horizontal line from 0 to its logFC
+p_wnt <- wnt_data %>%
+  filter(!is.na(logFC)) %>%
+  mutate(
+    # Label each gene as up or down for color coding
+    direction = ifelse(logFC > 0, "Up", "Down"),
+    # Fix gene order on y-axis by logFC (lowest at bottom)
+    gene_name = factor(gene_name, levels = gene_name)
+  ) %>%
+  ggplot(aes(x = logFC, y = reorder(gene_name, logFC), color = direction)) +
+  # Draw the line from 0 to the logFC value
+  geom_segment(aes(x = 0, xend = logFC, y = gene_name, yend = gene_name),
+               linewidth = 1) +
+  # Draw the dot at the end of each line
+  geom_point(size = 4) +
+  # Vertical reference line at 0
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray40") +
+  # Red = up, blue = down
+  scale_color_manual(values = c("Up" = "#E63946", "Down" = "#457B9D")) +
+  labs(title = "Wnt/Beta-catenin Target Gene Expression",
+       subtitle = "Positive logFC = upregulated in degrader condition",
+       x = "log2 Fold Change", y = NULL, color = "Direction") +
+  theme_bw(base_size = 13) +
+  theme(legend.position = "bottom",
+        plot.title = element_text(face = "bold"))
+
+ggsave("~/Downloads/plot1_wnt_targets.pdf", p_wnt, width = 7, height = 5)
