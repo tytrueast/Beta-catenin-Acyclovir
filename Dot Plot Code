@@ -1,0 +1,53 @@
+library(readr)
+library(dplyr)
+library(ggplot2)
+
+dge <- read_tsv("~/Downloads/selected_genes_dge.tsv",
+                col_names = c("EnsemblID", "gene_name", "logFC", "logCPM",
+                              "PValue", "FDR", "F", "gene_biotype",
+                              "GroupA_AvgCPM", "GroupB_AvgCPM",
+                              "GroupA_stdv", "GroupB_stdv",
+                              "log10FDR", "alias", "mygene_name", "summary"),
+                skip = 1, show_col_types = FALSE)
+
+tcell_panels <- list(
+  Activation    = c("CD69", "CD25", "IL2RA", "CD44", "CD38", "ICOS",
+                    "CD83", "ENTPD1"),
+  Effector      = c("IFNG", "TNF", "GZMB", "GZMA", "PRF1", "FASLG",
+                    "IL2", "IL4", "IL17A", "CXCR3"),
+  Exhaustion    = c("PDCD1", "HAVCR2", "LAG3", "TIGIT", "CTLA4",
+                    "TOX", "TOX2", "EOMES", "TBX21"),
+  Proliferation = c("MKI67", "TOP2A", "PCNA", "MCM2", "CCNA2", "CDK1"),
+  Memory        = c("CCR7", "SELL", "IL7R", "TCF7", "KLF2", "S1PR1"),
+  Nucleoside    = c("TK1", "TK2", "DCK", "CMPK1", "CMPK2",
+                    "TYMS", "RRM1", "RRM2", "UMPS")
+)
+
+tcell_results <- lapply(names(tcell_panels), function(panel) {
+  dge %>%
+    filter(gene_name %in% tcell_panels[[panel]]) %>%
+    mutate(panel = panel) %>%
+    select(panel, gene_name, logFC, logCPM, FDR)
+}) %>% bind_rows() %>% arrange(panel, logFC)
+
+p_tcell <- tcell_results %>%
+  filter(!is.na(logFC)) %>%
+  mutate(direction = ifelse(logFC > 0, "Up", "Down"),
+         sig = ifelse(!is.na(FDR) & FDR < 0.05, "FDR < 0.05", "NS / no FDR")) %>%
+  ggplot(aes(x = logFC, y = reorder(gene_name, logFC),
+             color = direction, shape = sig)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_point(size = 3.5) +
+  facet_wrap(~ panel, scales = "free_y", ncol = 2) +
+  scale_color_manual(values = c("Up" = "#E63946", "Down" = "#457B9D")) +
+  scale_shape_manual(values = c("FDR < 0.05" = 16, "NS / no FDR" = 1)) +
+  labs(title = "T Cell Gene Panels: Acyclovir Effect",
+       subtitle = "Grouped by functional category",
+       x = "log2 Fold Change", y = NULL,
+       color = "Direction", shape = "Significance") +
+  theme_bw(base_size = 11) +
+  theme(strip.background = element_rect(fill = "#1D3557", color = NA),
+        strip.text = element_text(color = "white", face = "bold"),
+        plot.title = element_text(face = "bold"))
+
+ggsave("~/Downloads/plot2_tcell_acyclovir.png", p_tcell, width = 10, height = 9, dpi = 150)
